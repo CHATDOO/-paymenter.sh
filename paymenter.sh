@@ -144,69 +144,9 @@ finalize_paymenter_setup() {
   fi
 }
 
-# Fonction personnalisée pour remplacer build_container avec corrections
-custom_build_container() {
-  # Exécuter la construction normale du conteneur
-  build_container
-  
-  # Appliquer les corrections spécifiques à Paymenter après la création
-  msg_info "Application des corrections spécifiques à Paymenter"
-  
-  # Attendre que le conteneur soit complètement initialisé
-  sleep 5
-  
-  # Exécuter les corrections dans le conteneur
-  lxc-attach -n "$CTID" -- bash -c "
-    # Fonction pour corriger MariaDB dans le conteneur
-    fix_container_mariadb() {
-      if systemctl is-active --quiet mariadb && [ -d '/opt/paymenter' ]; then
-        cd /opt/paymenter
-        
-        if [ -f .env ]; then
-          # Utiliser mariadb au lieu de mysql pour éviter les avertissements de dépréciation
-          DB_NAME='paymenter'
-          DB_USER='paymenter'
-          DB_PASS=\$(openssl rand -base64 32)
-          
-          # Créer la base de données avec mariadb
-          mariadb -u root 2>/dev/null <<EOF || mysql -u root 2>/dev/null <<EOF
-CREATE DATABASE IF NOT EXISTS \${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS '\${DB_USER}'@'localhost' IDENTIFIED BY '\${DB_PASS}';
-GRANT ALL PRIVILEGES ON \${DB_NAME}.* TO '\${DB_USER}'@'localhost';
-FLUSH PRIVILEGES;
-EOF
-          
-          # Mettre à jour .env
-          sed -i \"s/DB_DATABASE=.*/DB_DATABASE=\${DB_NAME}/\" .env
-          sed -i \"s/DB_USERNAME=.*/DB_USERNAME=\${DB_USER}/\" .env  
-          sed -i \"s/DB_PASSWORD=.*/DB_PASSWORD=\${DB_PASS}/\" .env
-          
-          # Sauvegarder les identifiants
-          echo \"Base de données: \${DB_NAME}\" > /opt/paymenter/db_info.txt
-          echo \"Utilisateur: \${DB_USER}\" >> /opt/paymenter/db_info.txt
-          echo \"Mot de passe: \${DB_PASS}\" >> /opt/paymenter/db_info.txt
-          chmod 600 /opt/paymenter/db_info.txt
-          
-          # Finaliser l'installation
-          php artisan key:generate --force 2>/dev/null || true
-          php artisan migrate --force 2>/dev/null || true  
-          php artisan db:seed --force 2>/dev/null || true
-          
-          chown -R www-data:www-data /opt/paymenter
-          chmod -R 775 /opt/paymenter/storage /opt/paymenter/bootstrap/cache
-          
-          systemctl restart nginx php8.3-fpm 2>/dev/null || true
-        fi
-      fi
-    }
-    
-    # Exécuter la correction après un délai
-    sleep 2
-    fix_container_mariadb
-  " 2>/dev/null || true
-  
-  msg_ok "Corrections Paymenter appliquées"
-}
+start
+custom_build_container
+description
 
 start
 custom_build_container
